@@ -1,0 +1,193 @@
+install.packages(dplyr)
+
+library(dplyr)
+
+rawdata <- read.csv(file.choose(), stringsAsFactors = FALSE)
+
+df <- rawdata
+
+# Check for missing values
+colSums(is.na(df))
+
+# If necessary, handle missing values (e.g., by removing rows with NAs)
+df_clean <- na.omit(df)
+
+# Convert categorical columns to factors
+df_clean <- df_clean %>%
+  mutate_if(is.character, as.factor)
+
+# Scale numeric columns if needed
+df_scaled <- df_clean %>%
+  mutate(across(where(is.numeric), scale))
+
+#install and load package
+install.packages("caret")
+
+library(caret)
+
+# Calculate the correlation matrix for numeric features
+cor_matrix <- cor(df_scaled %>% select_if(is.numeric))
+
+# Use findCorrelation() to identify highly correlated features
+high_cor <- findCorrelation(cor_matrix, cutoff = 0.75)
+
+# Remove the highly correlated features from the dataset
+df_selected <- df_scaled %>%
+  select(-high_cor)
+
+# View the selected features
+names(df_selected)
+
+# Load caret (if not loaded)
+# install and load randomForest
+install.packages("randomForest")
+
+library(randomForest)
+
+# Define the control for RFE
+control <- rfeControl(functions = rfFuncs, method = "cv", number = 10)
+
+# Define the predictor variables
+# (all columns except the last, which is the target)
+predictors <- df_selected[, -ncol(df_selected)]
+
+target <- df_selected[, ncol(df_selected)]
+
+# Perform RFE
+set.seed(123) # For reproducibility
+rfe_result <- rfe(predictors, target,
+                  sizes = c(1:10), # Number of features to consider
+                  rfeControl = control)
+
+# View the results of RFE
+rfe_result
+
+# Plot the performance of RFE
+plot(rfe_result, type = c("g", "o"))
+# g = line plot, o = points on the plot
+
+# View the names of the selected features
+rfe_result$optVariables
+
+# Subset the dataset to include only the selected features
+df_rfe_selected <- df_selected[, rfe_result$optVariables]
+
+# Train a random forest model using the RFE-selected features
+rf_model_rfe <- randomForest(df_rfe_selected, target)
+
+# View the model results
+print(rf_model_rfe)
+
+importance(rf_model_rfe)
+
+varImpPlot(rf_model_rfe)
+
+plot(rfe_result, type = "o", pch = 21, bg = "red", col = "red", cex = 1.5)
+
+plot(rfe_result$results$Variables, rfe_result$results$Accuracy, 
+     type = "b", pch = "\u2665", col = "red", cex = 1.5,
+     xlab = "Number of Variables", ylab = "Accuracy")
+
+# Plot RFE result with black skull symbols
+plot(rfe_result$results$Variables, rfe_result$results$Accuracy, 
+     type = "b", pch = "\u2620", col = "black", cex = 1.5,
+     xlab = "Number of Variables", ylab = "Accuracy")
+
+plot(rfe_result$results$Variables, rfe_result$results$Accuracy, 
+     type = "b", pch = "\u2605", col = "gold", cex = 1.5,
+     xlab = "Number of Variables", ylab = "Accuracy")
+
+plot(rfe_result$results$Variables, rfe_result$results$Accuracy, 
+     type = "b", pch = "\u26A1", col = "yellow", cex = 1.5,
+     xlab = "Number of Variables", ylab = "Accuracy")
+
+plot(rfe_result$results$Variables, rfe_result$results$Accuracy, 
+     type = "b", pch = "\u266B", col = "blue", cex = 1.5,
+     xlab = "Number of Variables", ylab = "Accuracy")
+
+# Install necessary packages if they aren't installed
+install.packages("factoextra") # For finding the optimal clusters
+
+install.packages("ggplot2") # For plotting
+
+# Load the libraries
+library(factoextra)
+
+library(ggplot2)
+
+library(dplyr)
+
+# Assuming you have the df_clean dataset
+# Remove non-numeric columns (such as categorical variables)
+df_numeric <- df_clean %>% select_if(is.numeric)
+
+# Scale the data (standardize to mean=0 and variance=1)
+df_scaled <- scale(df_numeric)
+
+# Function to compute total within-cluster sum of squares (WCSS)
+# for different numbers of clusters
+wcss <- function(k) {
+  kmeans(df_scaled, centers = k, nstart = 25)$tot.withinss
+}
+
+# Compute WCSS for a range of cluster sizes (e.g., 1 to 10 clusters)
+k_values <- 1:10
+
+wcss_values <- sapply(k_values, wcss)
+
+# Plot the Elbow Method result
+plot(k_values, wcss_values, type = "b", pch = 19, frame = FALSE,
+     xlab = "Number of Clusters (K)",
+     ylab = "Total Within-Cluster Sum of Squares (WCSS)",
+     main = "Elbow Method for Optimal Number of Clusters")
+
+# Use factoextra to visualize the elbow method
+fviz_nbclust(df_scaled, kmeans, method = "wss") +
+  geom_vline(xintercept = 3, linetype = 2) +
+  labs(subtitle = "Elbow Method")
+
+# Load necessary libraries
+# library(dplyr)
+# library(ggplot2)
+# Assuming df_clean is the cleaned dataset with scaled variables
+# Subset data to include only age and monthly income
+df_segment <- df_clean %>%
+  select(Age_Group, Monthly_Income)
+
+# Handle missing values (if any)
+df_segment <- na.omit(df_segment)
+
+# Scale the data (optional, but recommended for K-means clustering)
+df_segment_scaled <- scale(df_segment)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Perform K-means clustering with 3 clusters
+kmeans_result <- kmeans(df_segment_scaled, centers = 3, nstart = 25)
+
+# Add the cluster assignment to the original data
+df_clean$Cluster <- kmeans_result$cluster
+
+# View the first few rows to check the clusters
+head(df_clean)
+
+# Group by clusters and summarize financial behaviors
+df_summary <- df_clean %>%
+  group_by(Cluster) %>%
+  summarize(
+    Avg_Age = mean(Age_Group),
+    Avg_Income = mean(Monthly_Income),
+    Avg_Savings = mean(Monthly_Savings, na.rm = TRUE),
+    Avg_Financial_Situation = mean(Financial_Situation,
+                                   na.rm = TRUE))
+
+# View the summarized results
+df_summary
+
+# Count the number of respondents per cluster
+cluster_count <- df_clean %>%
+  group_by(Cluster) %>%
+  summarise(Count = n())
+
+print(cluster_count)
