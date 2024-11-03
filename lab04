@@ -1,0 +1,83 @@
+install.packages(dplyr)
+
+library(dplyr)
+
+rawdata <- read.csv(file.choose(), stringsAsFactors = FALSE)
+
+df <- rawdata
+
+# Check for missing values
+colSums(is.na(df))
+
+# If necessary, handle missing values (e.g., by removing rows with NAs)
+df_clean <- na.omit(df)
+
+# Convert categorical columns to factors
+df_clean <- df_clean %>%
+  mutate_if(is.character, as.factor)
+
+# Scale numeric columns if needed
+df_scaled <- df_clean %>%
+  mutate(across(where(is.numeric), scale))
+
+#install and load package
+install.packages("caret")
+
+library(caret)
+
+# Calculate the correlation matrix for numeric features
+cor_matrix <- cor(df_scaled %>% select_if(is.numeric))
+
+# Use findCorrelation() to identify highly correlated features
+high_cor <- findCorrelation(cor_matrix, cutoff = 0.75)
+
+# Remove the highly correlated features from the dataset
+df_selected <- df_scaled %>%
+  select(-high_cor)
+
+# View the selected features
+names(df_selected)
+
+# Load caret (if not loaded)
+# install and load randomForest
+install.packages("randomForest")
+
+library(randomForest)
+
+# Define the control for RFE
+control <- rfeControl(functions = rfFuncs, method = "cv", number = 10)
+
+# Define the predictor variables
+# (all columns except the last, which is the target)
+predictors <- df_selected[, -ncol(df_selected)]
+
+target <- df_selected[, ncol(df_selected)]
+
+# Perform RFE
+set.seed(123) # For reproducibility
+rfe_result <- rfe(predictors, target,
+                  sizes = c(1:10), # Number of features to consider
+                  rfeControl = control)
+
+# View the results of RFE
+rfe_result
+
+# Plot the performance of RFE
+plot(rfe_result, type = c("g", "o"))
+# g = line plot, o = points on the plot
+
+# View the names of the selected features
+rfe_result$optVariables
+
+# Subset the dataset to include only the selected features
+df_rfe_selected <- df_selected[, rfe_result$optVariables]
+
+# Train a random forest model using the RFE-selected features
+rf_model_rfe <- randomForest(df_rfe_selected, target)
+
+# View the model results
+print(rf_model_rfe)
+
+importance(rf_model_rfe)
+
+varImpPlot(rf_model_rfe)
